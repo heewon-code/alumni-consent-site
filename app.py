@@ -2,6 +2,10 @@
 """동문 개인정보 수집 웹 애플리케이션 (클라우드 배포 버전)"""
 
 import os, json, base64, io, datetime
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 import psycopg2
 import psycopg2.extras
 import tornado.ioloop
@@ -21,18 +25,22 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ──────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────
-pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJp-Medium'))
 FONT = 'HYSMyeongJo-Medium'
 # bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
 from reportlab.lib.fonts import addMapping
 addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
-addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJp-Medium', 1, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 0, 1, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
+DATABASE_URL    = os.environ.get('DATABASE_URL', '')
 # 관리자 비밀번호 (환경변수 ADMIN_PASSWORD 로 변경 가능)
-ADMIN_PASS   = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
+ADMIN_PASS      = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
+# 이메일 알림 설정
+GMAIL_USER      = os.environ.get('GMAIL_USER', '')
+GMAIL_APP_PASS  = os.environ.get('GMAIL_APP_PASSWORD', '')
+NOTIFY_EMAIL    = os.environ.get('NOTIFY_EMAIL', 'hwkim@marusys.com')
 
 
 # ──────────────────────────────────────────
@@ -78,6 +86,47 @@ def save_submission(data: dict, pdf_bytes: bytes = None):
     con.commit()
     cur.close()
     con.close()
+
+
+def send_notification_email(data: dict, pdf_bytes: bytes):
+    """동문 제출 시 관리자 이메일로 PDF 알림 발송"""
+    if not GMAIL_USER or not GMAIL_APP_PASS:
+        return  # 환경변수 미설정 시 조용히 스킵
+    try:
+        name    = data.get('name', '동문')
+        year    = data.get('year', '')
+        consent = '동의' if data.get('consent') == 'yes' else '미동의'
+
+        msg = MIMEMultipart()
+        msg['From']    = GMAIL_USER
+        msg['To']      = NOTIFY_EMAIL
+        msg['Subject'] = f'[동문 개인정보 수집] {name} ({year}학번) 제출 완료'
+
+        body = (
+            f"동문이 개인정보 수집 동의서를 제출하였습니다.\n\n"
+            f"  이름     : {name}\n"
+            f"  학번     : {year}\n"
+            f"  이메일   : {data.get('email','')}\n"
+            f"  연락처   : {data.get('phone','')}\n"
+            f"  주소     : {data.get('address','')}\n"
+            f"  동의여부 : {consent}\n\n"
+            f"서명이 포함된 PDF가 첨부되어 있습니다."
+        )
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        if pdf_bytes:
+            pdf_part = MIMEApplication(pdf_bytes, _subtype='pdf')
+            pdf_part.add_header(
+                'Content-Disposition', 'attachment',
+                filename=f'개인정보동의서_{name}.pdf'
+            )
+            msg.attach(pdf_part)
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(GMAIL_USER, GMAIL_APP_PASS)
+            smtp.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
+    except Exception as e:
+        print(f'[이메일 오류] {e}')
 
 
 def get_all_submissions():
@@ -137,7 +186,7 @@ def make_consent_pdf(data: dict) -> bytes:
 
     agreed = data.get('consent') == 'yes'
     agree_t = Table([[
-    0   Paragraph('■ 동의합니다' if agreed else '□ 동의합니다', normal),
+        Paragraph('■ 동의합니다' if agreed else '□ 동의합니다', normal),
         Paragraph('□ 동의하지 않습니다' if agreed else '■ 동의하지 않습니다', normal)
     ]], colWidths=[70*mm, 80*mm])
     agree_t.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER')]))
@@ -156,7 +205,7 @@ def make_consent_pdf(data: dict) -> bytes:
          Paragraph('이&#160;&#160;메&#160;&#160;일', normal), Paragraph(data.get('email',''), normal)],
         [Paragraph('핸드폰', normal), Paragraph(data.get('phone',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
-     2  [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
+        [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
     ]
     info_t = Table(info_data, colWidths=[28*mm, 52*mm, 34*mm, 36*mm])
@@ -222,7 +271,7 @@ def export_excel() -> bytes:
     dfont = Font(name='맑은 고딕', size=10)
     for ri, row in enumerate(rows, 2):
         db_id, year, name, email, phone, address, consent, submitted_at = row
-        vals = [ri-1,,동문',year,name,email,phone,address,consent,submitted_at]
+        vals = [ri-1,'동문',year,name,email,phone,address,consent,submitted_at]
         for ci, val in enumerate(vals, 1):
             c = ws.cell(ri, ci, val)
             c.font=dfont
@@ -378,7 +427,7 @@ async function onSubmit(e){
 # 관리자 페이지
 # ──────────────────────────────────────────
 def admin_html(rows):
-  2 count  = len(rows)
+    count  = len(rows)
     agreed = sum(1 for r in rows if r[6]=='동의')
     rows_html = ''.join(f"""<tr>
       <td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>
@@ -391,7 +440,7 @@ def admin_html(rows):
 <title>관리자 | 동문 명단</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20px}}
+body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20py}}
 .wrap{{max-width:1200px;margin:0 auto}}
 h1{{font-size:22px;color:#1a1a2e;margin-bottom:6px}}
 .sub{{color:#888;font-size:13px;margin-bottom:24px}}
@@ -449,6 +498,10 @@ class SubmitHandler(tornado.web.RequestHandler):
             save_submission(data, pdf_bytes)
         except Exception as e:
             print(f'[DB 오류] {e}')
+        try:
+            send_notification_email(data, pdf_bytes)
+        except Exception as e:
+            print(f'[이메일 오류] {e}')
         fn = tornado.escape.url_escape(f"개인정보동의서_{data.get('name','동문')}.pdf")
         self.set_header('Content-Type','application/pdf')
         self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
@@ -456,7 +509,7 @@ class SubmitHandler(tornado.web.RequestHandler):
 
 class AdminHandler(tornado.web.RequestHandler):
     def get(self):
-        if self.get_argument('pw','') != ADMIN_PASS:
+        i� self.get_argument('pw','') != ADMIN_PASS:
             self.set_header('Content-Type','text/html; charset=utf-8')
             self.write("""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap" rel="stylesheet">
