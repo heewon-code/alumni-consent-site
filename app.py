@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """동문 개인정보 수집 웹 애플리케이션 (클라우드 배포 버전)"""
 
-import os, json, base64, io, datetime, sqlite3
+import os, json, base64, io, datetime
+import psycopg2
+import psycopg2.extras
 import tornado.ioloop
 import tornado.web
 import tornado.escape
@@ -19,67 +21,74 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ──────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────
-pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
-FONT = 'HYSMyeongJo-Medium'
-# bold/italic 변형 매핑 (CIDFont4는 단일 weight이证로 ꪎ두 동일 폰트 말핑)
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJp-Medium'))
+FONT = 'HYSMyeongJp-Medium'
+# bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
 from reportlab.lib.fonts import addMapping
 addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 0, 1, 'HYSMyeongJo-Medium')
-addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJp-Medium')
 
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-DB_PATH    = os.path.join(BASE_DIR, 'alumni.db')
-# 관리자 비밀번호 (흘경변수 ADMIN_PASSWORD 로 변경 가능)
-ADMIN_PASS = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+# 관리자 비밀번호 (환경변수 ADMIN_PASSWORD 로 변경 가능)
+ADMIN_PASS   = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
 
 
 # ──────────────────────────────────────────
-# SQLite 초기화
+# PostgreSQL 초기화
 # ──────────────────────────────────────────
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
+
+
 def init_db():
-    con = sqlite3.connect(DB_PATH)
-    con.execute("""
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS submissions (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            year      TEXT,
-            name      TEXT,
-            email     TEXT,
-            phone     TEXT,
-            address   TEXT,
-            consent   TEXT,
+            id           SERIAL PRIMARY KEY,
+            year         TEXT,
+            name         TEXT,
+            email        TEXT,
+            phone        TEXT,
+            address      TEXT,
+            consent      TEXT,
             submitted_at TEXT,
-            pdf_data  BLOB
+            pdf_data     BYTEA
         )
     """)
-    # 기꡴ 테이블에 pdf_data 컬럼이 없으면 추가  +��이그레이션)    try:
-        con.execute("ALTER TABLE submissions ADD COLUMN pdf_data BLOB")
-    except Exception:
-        pass  # 이미 있으면 무시
     con.commit()
+    cur.close()
     con.close()
 
 
 def save_submission(data: dict, pdf_bytes: bytes = None):
-    con = sqlite3.connect(DB_PATH)
-    con.execute(
-        "INSERT INTO submissions (year,name,email,phone,address,consent,submitted_at,pdf_data) VALUES (?,?,?,?,?,?,?,?)",
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute(
+        "INSERT INTO submissions (year,name,email,phone,address,consent,submitted_at,pdf_data)"
+        " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
         (data.get('year',''), data.get('name',''), data.get('email',''),
          data.get('phone',''), data.get('address',''),
          '동의' if data.get('consent')=='yes' else '미동의',
          datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-         pdf_bytes)
+         psycopg2.Binary(pdf_bytes) if pdf_bytes else None)
     )
     con.commit()
+    cur.close()
     con.close()
 
 
 def get_all_submissions():
-    con = sqlite3.connect(DB_PATH)
-    rows = con.execute(
+    con = get_conn()
+    cur = con.cursor()
+    cur.execute(
         "SELECT id,year,name,email,phone,address,consent,submitted_at,"
         " (pdf_data IS NOT NULL) AS has_pdf FROM submissions ORDER BY id"
-    ).fetchall()
+    )
+    rows = cur.fetchall()
+    cur.close()
     con.close()
     return rows
 
@@ -104,7 +113,7 @@ def make_consent_pdf(data: dict) -> bytes:
     story.append(Paragraph('개인정보 수집 및 이용 동의서', title_s))
     story.append(HRFlowable(width='100%', thickness=1.5, color=colors.black, spaceAfter=6*mm))
 
-    story.append(Paragraph('1. 본인은 다음과 같은 본인의 개인정보를 수집&#8729;이용하는 것에 대하여 동의합니다.', bold_s))
+    story.append(Paragraph('1. 본인은 다음과 같이 본인의 개인정보를 수집&#8729;이용하는 것에 대하여 동의합니다.', bold_s))
     for line in [
         '가. 개인정보의 수집&#8729;이용자 : 덕성여자대학교',
         '나. 개인정보의 수집&#8729;이용 목적 : 동문 관리, 학교 행사 및 소식 안내 등',
@@ -128,7 +137,7 @@ def make_consent_pdf(data: dict) -> bytes:
 
     agreed = data.get('consent') == 'yes'
     agree_t = Table([[
-        Paragraph('■ 동의합니다' if agreed else '□ 동의합니다', normal),
+    0   Paragraph('■ 동의합니다' if agreed else '□ 동의합니다', normal),
         Paragraph('□ 동의하지 않습니다' if agreed else '■ 동의하지 않습니다', normal)
     ]], colWidths=[70*mm, 80*mm])
     agree_t.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER')]))
@@ -147,7 +156,7 @@ def make_consent_pdf(data: dict) -> bytes:
          Paragraph('이&#160;&#160;메&#160;&#160;일', normal), Paragraph(data.get('email',''), normal)],
         [Paragraph('핸드폰', normal), Paragraph(data.get('phone',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
-        [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
+     0  [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
     ]
     info_t = Table(info_data, colWidths=[28*mm, 52*mm, 34*mm, 36*mm])
@@ -369,7 +378,7 @@ async function onSubmit(e){
 # 관리자 페이지
 # ──────────────────────────────────────────
 def admin_html(rows):
-    count  = len(rows)
+  # count  = len(rows)
     agreed = sum(1 for r in rows if r[6]=='동의')
     rows_html = ''.join(f"""<tr>
       <td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>
@@ -382,7 +391,7 @@ def admin_html(rows):
 <title>관리자 | 동문 명단</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20px}}
+body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20py}}
 .wrap{{max-width:1200px;margin:0 auto}}
 h1{{font-size:22px;color:#1a1a2e;margin-bottom:6px}}
 .sub{{color:#888;font-size:13px;margin-bottom:24px}}
@@ -478,10 +487,11 @@ class AdminPDFHandler(tornado.web.RequestHandler):
     def get(self, sub_id):
         if self.get_argument('pw','') != ADMIN_PASS:
             self.set_status(403); self.write('인증 필요'); return
-        con = sqlite3.connect(DB_PATH)
-        row = con.execute(
-            "SELECT name, pdf_data FROM submissions WHERE id=?", (sub_id,)
-        ).fetchone()
+        con = get_conn()
+        cur = con.cursor()
+        cur.execute("SELECT name, pdf_data FROM submissions WHERE id=%s", (sub_id,))
+        row = cur.fetchone()
+        cur.close()
         con.close()
         if not row or not row[1]:
             self.set_status(404); self.write('PDF 없음'); return
