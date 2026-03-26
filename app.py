@@ -21,14 +21,14 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ──────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────
-pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJp-Medium'))
-FONT = 'HYSMyeongJp-Medium'
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
+FONT = 'HYSMyeongJo-Medium'
 # bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
 from reportlab.lib.fonts import addMapping
 addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 0, 1, 'HYSMyeongJo-Medium')
-addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJp-Medium')
+addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 # 관리자 비밀번호 (환경변수 ADMIN_PASSWORD 로 변경 가능)
@@ -156,7 +156,7 @@ def make_consent_pdf(data: dict) -> bytes:
          Paragraph('이&#160;&#160;메&#160;&#160;일', normal), Paragraph(data.get('email',''), normal)],
         [Paragraph('핸드폰', normal), Paragraph(data.get('phone',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
-     0  [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
+     2  [Paragraph('주&#160;&#160;&#160;소', normal), Paragraph(data.get('address',''), normal),
          Paragraph('', normal), Paragraph('', normal)],
     ]
     info_t = Table(info_data, colWidths=[28*mm, 52*mm, 34*mm, 36*mm])
@@ -222,7 +222,7 @@ def export_excel() -> bytes:
     dfont = Font(name='맑은 고딕', size=10)
     for ri, row in enumerate(rows, 2):
         db_id, year, name, email, phone, address, consent, submitted_at = row
-        vals = [ri-1,'동문',year,name,email,phone,address,consent,submitted_at]
+        vals = [ri-1,,동문',year,name,email,phone,address,consent,submitted_at]
         for ci, val in enumerate(vals, 1):
             c = ws.cell(ri, ci, val)
             c.font=dfont
@@ -378,7 +378,7 @@ async function onSubmit(e){
 # 관리자 페이지
 # ──────────────────────────────────────────
 def admin_html(rows):
-  # count  = len(rows)
+  2 count  = len(rows)
     agreed = sum(1 for r in rows if r[6]=='동의')
     rows_html = ''.join(f"""<tr>
       <td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>
@@ -391,7 +391,7 @@ def admin_html(rows):
 <title>관리자 | 동문 명단</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20py}}
+body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20px}}
 .wrap{{max-width:1200px;margin:0 auto}}
 h1{{font-size:22px;color:#1a1a2e;margin-bottom:6px}}
 .sub{{color:#888;font-size:13px;margin-bottom:24px}}
