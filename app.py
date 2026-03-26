@@ -21,7 +21,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ──────────────────────────────────────────
 pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
 FONT = 'HYSMyeongJo-Medium'
-# bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
+# bold/italic 변형 매핑 (CIDFont4는 단일 weight이证로 ꪎ두 동일 폰트 말핑)
 from reportlab.lib.fonts import addMapping
 addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
@@ -30,7 +30,7 @@ addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 DB_PATH    = os.path.join(BASE_DIR, 'alumni.db')
-# 관리자 비밀번호 (환경변수 ADMIN_PASSWORD 로 변경 가능)
+# 관리자 비밀번호 (흘경변수 ADMIN_PASSWORD 로 변경 가능)
 ADMIN_PASS = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
 
 
@@ -52,8 +52,7 @@ def init_db():
             pdf_data  BLOB
         )
     """)
-    # 기존 테이블에 pdf_data 컬럼이 없으면 추가 (마이그레이션)
-    try:
+    # 기꡴ 테이블에 pdf_data 컬럼이 없으면 추가  +��이그레이션)    try:
         con.execute("ALTER TABLE submissions ADD COLUMN pdf_data BLOB")
     except Exception:
         pass  # 이미 있으면 무시
@@ -91,7 +90,7 @@ def get_all_submissions():
 def make_consent_pdf(data: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
-        topMargin=25*mm, bottomMargin=25*mm,
+        topMargin=12*mm, bottomMargin=20*mm,
         leftMargin=30*mm, rightMargin=30*mm)
 
     normal  = ParagraphStyle('ks_normal', fontName=FONT, fontSize=10, leading=18, wordWrap='CJK')
@@ -101,11 +100,11 @@ def make_consent_pdf(data: dict) -> bytes:
     right_s = ParagraphStyle('ks_right',  fontName=FONT, fontSize=10, leading=18, alignment=TA_RIGHT, wordWrap='CJK')
 
     story = []
-    story.append(Spacer(1, 6*mm))
+    story.append(Spacer(1, 2*mm))
     story.append(Paragraph('개인정보 수집 및 이용 동의서', title_s))
     story.append(HRFlowable(width='100%', thickness=1.5, color=colors.black, spaceAfter=6*mm))
 
-    story.append(Paragraph('1. 본인은 다음과 같이 본인의 개인정보를 수집&#8729;이용하는 것에 대하여 동의합니다.', bold_s))
+    story.append(Paragraph('1. 본인은 다음과 같은 본인의 개인정보를 수집&#8729;이용하는 것에 대하여 동의합니다.', bold_s))
     for line in [
         '가. 개인정보의 수집&#8729;이용자 : 덕성여자대학교',
         '나. 개인정보의 수집&#8729;이용 목적 : 동문 관리, 학교 행사 및 소식 안내 등',
@@ -156,6 +155,8 @@ def make_consent_pdf(data: dict) -> bytes:
         ('FONTNAME',(0,0),(-1,-1),FONT), ('FONTSIZE',(0,0),(-1,-1),10),
         ('GRID',(0,0),(-1,-1),0.5,colors.black),
         ('BACKGROUND',(0,0),(0,-1),gray), ('BACKGROUND',(2,0),(2,-1),gray),
+        # SPAN 영역(핸드폰·주소 값 셀) 안의 회색 배경을 흰색으로 덮어 균일하게
+        ('BACKGROUND',(1,2),(3,2),colors.white), ('BACKGROUND',(1,3),(3,3),colors.white),
         ('ALIGN',(0,0),(-1,-1),'CENTER'), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
         ('TOPPADDING',(0,0),(-1,-1),5), ('BOTTOMPADDING',(0,0),(-1,-1),5),
         ('SPAN',(1,2),(3,2)), ('SPAN',(1,3),(3,3)),
