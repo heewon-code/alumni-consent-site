@@ -48,21 +48,28 @@ def init_db():
             phone     TEXT,
             address   TEXT,
             consent   TEXT,
-            submitted_at TEXT
+            submitted_at TEXT,
+            pdf_data  BLOB
         )
     """)
+    # 기존 테이블에 pdf_data 컬럼이 없으면 추가 (마이그레이션)
+    try:
+        con.execute("ALTER TABLE submissions ADD COLUMN pdf_data BLOB")
+    except Exception:
+        pass  # 이미 있으면 무시
     con.commit()
     con.close()
 
 
-def save_submission(data: dict):
+def save_submission(data: dict, pdf_bytes: bytes = None):
     con = sqlite3.connect(DB_PATH)
     con.execute(
-        "INSERT INTO submissions (year,name,email,phone,address,consent,submitted_at) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO submissions (year,name,email,phone,address,consent,submitted_at,pdf_data) VALUES (?,?,?,?,?,?,?,?)",
         (data.get('year',''), data.get('name',''), data.get('email',''),
          data.get('phone',''), data.get('address',''),
          '동의' if data.get('consent')=='yes' else '미동의',
-         datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+         datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+         pdf_bytes)
     )
     con.commit()
     con.close()
@@ -71,7 +78,8 @@ def save_submission(data: dict):
 def get_all_submissions():
     con = sqlite3.connect(DB_PATH)
     rows = con.execute(
-        "SELECT id,year,name,email,phone,address,consent,submitted_at FROM submissions ORDER BY id"
+        "SELECT id,year,name,email,phone,address,consent,submitted_at,"
+        " (pdf_data IS NOT NULL) AS has_pdf FROM submissions ORDER BY id"
     ).fetchall()
     con.close()
     return rows
@@ -121,8 +129,8 @@ def make_consent_pdf(data: dict) -> bytes:
 
     agreed = data.get('consent') == 'yes'
     agree_t = Table([[
-        Paragraph('☑ 동의합니다' if agreed else '☐ 동의합니다', normal),
-        Paragraph('☐ 동의하지 않습니다' if agreed else '☑ 동의하지 않습니다', normal)
+        Paragraph('■ 동의합니다' if agreed else '□ 동의합니다', normal),
+        Paragraph('□ 동의하지 않습니다' if agreed else '■ 동의하지 않습니다', normal)
     ]], colWidths=[70*mm, 80*mm])
     agree_t.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER')]))
     story.append(agree_t)
@@ -134,7 +142,7 @@ def make_consent_pdf(data: dict) -> bytes:
 
     gray = colors.Color(0.93,0.93,0.93)
     info_data = [
-        [Paragraph('전공(학과)', normal), Paragraph('', normal),
+        [Paragraph('전공(학과)', normal), Paragraph('유아교육과', normal),
          Paragraph('입학연도(학번)', normal), Paragraph(str(data.get('year','')), normal)],
         [Paragraph('성&#160;&#160;&#160;명', normal), Paragraph(data.get('name',''), normal),
          Paragraph('이&#160;&#160;메&#160;&#160;일', normal), Paragraph(data.get('email',''), normal)],
@@ -366,6 +374,7 @@ def admin_html(rows):
       <td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>
       <td>{r[4]}</td><td>{r[5]}</td>
       <td class="{'agree' if r[6]=='동의' else 'disagree'}">{r[6]}</td><td>{r[7]}</td>
+      <td>{'<a href="/admin/pdf/'+str(r[0])+'?pw={ADMIN_PASS}" class="pdf-btn">⬇ PDF</a>'.format(ADMIN_PASS=ADMIN_PASS) if r[8] else '<span style="color:#bbb">없음</span>'}</td>
     </tr>""" for r in rows)
     return f"""<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -373,7 +382,7 @@ def admin_html(rows):
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20px}}
-.wrap{{max-width:1100px;margin:0 auto}}
+.wrap{{max-width:1200px;margin:0 auto}}
 h1{{font-size:22px;color:#1a1a2e;margin-bottom:6px}}
 .sub{{color:#888;font-size:13px;margin-bottom:24px}}
 .cards{{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap}}
@@ -387,6 +396,8 @@ td{{padding:10px 14px;font-size:13px;border-bottom:1px solid #f0f0f0;text-align:
 tr:last-child td{{border-bottom:none}}
 tr:hover td{{background:#f8f9ff}}
 .agree{{color:#27ae60;font-weight:600}}.disagree{{color:#e74c3c;font-weight:600}}
+.pdf-btn{{background:#0f3460;color:#fff;padding:4px 10px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600}}
+.pdf-btn:hover{{background:#e94560}}
 </style></head>
 <body><div class="wrap">
   <h1>동문 개인정보 동의 현황</h1>
@@ -399,9 +410,9 @@ tr:hover td{{background:#f8f9ff}}
   <a href="/admin/export?pw={ADMIN_PASS}" class="dl-btn">⬇ Excel 다운로드</a>
   <table><thead><tr>
     <th>No</th><th>입학연도</th><th>성명</th><th>이메일</th>
-    <th>핸드폰</th><th>주소</th><th>동의여부</th><th>제출일시</th>
+    <th>핸드폰</th><th>주소</th><th>동의여부</th><th>제출일시</th><th>PDF</th>
   </tr></thead>
-  <tbody>{rows_html if rows_html else '<tr><td colspan="8" style="color:#aaa;padding:30px">아직 제출된 데이터가 없습니다.</td></tr>'}</tbody>
+  <tbody>{rows_html if rows_html else '<tr><td colspan="9" style="color:#aaa;padding:30px">아직 제출된 데이터가 없습니다.</td></tr>'}</tbody>
   </table>
 </div></body></html>"""
 
@@ -425,7 +436,7 @@ class SubmitHandler(tornado.web.RequestHandler):
         except Exception as e:
             self.set_status(500); self.write(f'PDF 오류: {e}'); return
         try:
-            save_submission(data)
+            save_submission(data, pdf_bytes)
         except Exception as e:
             print(f'[DB 오류] {e}')
         fn = tornado.escape.url_escape(f"개인정보동의서_{data.get('name','동문')}.pdf")
@@ -462,12 +473,30 @@ class AdminExportHandler(tornado.web.RequestHandler):
         self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
         self.write(export_excel())
 
+class AdminPDFHandler(tornado.web.RequestHandler):
+    def get(self, sub_id):
+        if self.get_argument('pw','') != ADMIN_PASS:
+            self.set_status(403); self.write('인증 필요'); return
+        con = sqlite3.connect(DB_PATH)
+        row = con.execute(
+            "SELECT name, pdf_data FROM submissions WHERE id=?", (sub_id,)
+        ).fetchone()
+        con.close()
+        if not row or not row[1]:
+            self.set_status(404); self.write('PDF 없음'); return
+        name, pdf_data = row
+        fn = tornado.escape.url_escape(f"개인정보동의서_{name}.pdf")
+        self.set_header('Content-Type','application/pdf')
+        self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
+        self.write(bytes(pdf_data))
+
 def make_app():
     return tornado.web.Application([
-        (r'/',              MainHandler),
-        (r'/submit',        SubmitHandler),
-        (r'/admin',         AdminHandler),
-        (r'/admin/export',  AdminExportHandler),
+        (r'/',                  MainHandler),
+        (r'/submit',            SubmitHandler),
+        (r'/admin',             AdminHandler),
+        (r'/admin/export',      AdminExportHandler),
+        (r'/admin/pdf/(\d+)',   AdminPDFHandler),
     ])
 
 if __name__ == '__main__':
