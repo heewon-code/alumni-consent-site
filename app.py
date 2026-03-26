@@ -20,7 +20,13 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # 설정
 # ──────────────────────────────────────────
 pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
-FONT = 'HYSMyeongJp-Medium'
+FONT = 'HYSMyeongJo-Medium'
+# bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
+from reportlab.lib.fonts import addMapping
+addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJo-Medium', 0, 1, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 DB_PATH    = os.path.join(BASE_DIR, 'alumni.db')
@@ -80,11 +86,11 @@ def make_consent_pdf(data: dict) -> bytes:
         topMargin=25*mm, bottomMargin=25*mm,
         leftMargin=30*mm, rightMargin=30*mm)
 
-    normal  = ParagraphStyle('n', fontName=FONT, fontSize=10, leading=18, wordWrap='CJK')
-    title_s = ParagraphStyle('t', fontName=FONT, fontSize=16, leading=24, alignment=TA_CENTER, spaceAfter=4*mm)
-    bold_s  = ParagraphStyle('b', fontName=FONT, fontSize=10, leading=18, wordWrap='CJK', spaceAfter=2*mm)
-    center_s= ParagraphStyle('c', fontName=FONT, fontSize=10, leading=18, alignment=TA_CENTER, wordWrap='CJK')
-    right_s = ParagraphStyle('r', fontName=FONT, fontSize=10, leading=18, alignment=TA_RIGHT, wordWrap='CJK')
+    normal  = ParagraphStyle('ks_normal', fontName=FONT, fontSize=10, leading=18, wordWrap='CJK')
+    title_s = ParagraphStyle('ks_title',  fontName=FONT, fontSize=16, leading=24, alignment=TA_CENTER, spaceAfter=4*mm)
+    bold_s  = ParagraphStyle('ks_bold',   fontName=FONT, fontSize=10, leading=18, wordWrap='CJK', spaceAfter=2*mm)
+    center_s= ParagraphStyle('ks_center', fontName=FONT, fontSize=10, leading=18, alignment=TA_CENTER, wordWrap='CJK')
+    right_s = ParagraphStyle('ks_right',  fontName=FONT, fontSize=10, leading=18, alignment=TA_RIGHT, wordWrap='CJK')
 
     story = []
     story.append(Spacer(1, 6*mm))
