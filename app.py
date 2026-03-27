@@ -25,16 +25,18 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ──────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────
-pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJp-Medium'))
+pdfmetrics.registerFont(UnicodeCIDFont('HYSMyeongJo-Medium'))
 FONT = 'HYSMyeongJo-Medium'
 # bold/italic 변형 매핑 (CIDFont는 단일 weight이므로 모두 동일 폰트로 매핑)
 from reportlab.lib.fonts import addMapping
 addMapping('HYSMyeongJo-Medium', 0, 0, 'HYSMyeongJo-Medium')
-addMapping('HYSMyeongJp-Medium', 1, 0, 'HYSMyeongJo-Medium')
+addMapping('HYSMyeongJo-Medium', 1, 0, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 0, 1, 'HYSMyeongJo-Medium')
 addMapping('HYSMyeongJo-Medium', 1, 1, 'HYSMyeongJo-Medium')
 
-DATABASE_URL    = os.environ.get('DATABASE_URL', '')
+# Render.com은 postgres:// 로 시작하는 URL을 제공하지만 psycopg2는 postgresql:// 필요
+_db_url = os.environ.get('DATABASE_URL', '')
+DATABASE_URL = _db_url.replace('postgres://', 'postgresql://', 1) if _db_url.startswith('postgres://') else _db_url
 # 관리자 비밀번호 (환경변수 ADMIN_PASSWORD 로 변경 가능)
 ADMIN_PASS      = os.environ.get('ADMIN_PASSWORD', 'duksung2026')
 # 이메일 알림 설정
@@ -270,7 +272,7 @@ def export_excel() -> bytes:
 
     dfont = Font(name='맑은 고딕', size=10)
     for ri, row in enumerate(rows, 2):
-        db_id, year, name, email, phone, address, consent, submitted_at = row
+        db_id, year, name, email, phone, address, consent, submitted_at, has_pdf = row
         vals = [ri-1,'동문',year,name,email,phone,address,consent,submitted_at]
         for ci, val in enumerate(vals, 1):
             c = ws.cell(ri, ci, val)
@@ -280,7 +282,7 @@ def export_excel() -> bytes:
             if ri % 2 == 0:
                 c.fill=PatternFill('solid',fgColor='F8F9FA')
 
-    for i, w in enumerate([8,12,16,10,24,16,36,10,18], 1):
+    for i, w in enumerate([8,12,16,10,24,1:,3:,10,18], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     buf = io.BytesIO()
@@ -361,7 +363,7 @@ input:focus{outline:none;border-color:#0f3460;box-shadow:0 0 0 3px rgba(15,52,96
         <div class="section-title">기본 정보</div>
         <div class="grid">
           <div class="field"><label>입학연도(학번)<span class="req">*</span></label>
-            <input name="year" placeholder="예) 2001 또는 01학번" required></div>
+            <input name="yaar" placeholder="예) 2001 또는 01학번" required></div>
           <div class="field"><label>성명<span class="req">*</span></label>
             <input name="name" placeholder="홍길동" required></div>
           <div class="field"><label>이메일<span class="req">*</span></label>
@@ -378,7 +380,7 @@ input:focus{outline:none;border-color:#0f3460;box-shadow:0 0 0 3px rgba(15,52,96
         <div class="section-title">개인정보 수집·이용 동의</div>
         <div class="consent-row">
           <label class="consent-label"><input type="radio" name="consent" value="yes" required> ✅ 동의합니다</label>
-          <label class="consent-label no"><input type="radio" name="consent" value="no"> ❌ 동의하지 않습니다</label>
+          <label class="consent-label n"><input type="radio" name="consent" value="no"> ❌ 동의하지 않습니다</label>
         </div>
       </div>
       <div class="section">
@@ -440,7 +442,7 @@ def admin_html(rows):
 <title>관리자 | 동문 명단</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20py}}
+body{{font-family:'Noto Sans KR',sans-serif;background:#f0f2f5;margin:0;padding:30px 20px}}
 .wrap{{max-width:1200px;margin:0 auto}}
 h1{{font-size:22px;color:#1a1a2e;margin-bottom:6px}}
 .sub{{color:#888;font-size:13px;margin-bottom:24px}}
@@ -509,7 +511,7 @@ class SubmitHandler(tornado.web.RequestHandler):
 
 class AdminHandler(tornado.web.RequestHandler):
     def get(self):
-        i� self.get_argument('pw','') != ADMIN_PASS:
+        if self.get_argument('pw','') != ADMIN_PASS:
             self.set_header('Content-Type','text/html; charset=utf-8')
             self.write("""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap" rel="stylesheet">
@@ -530,9 +532,9 @@ class AdminExportHandler(tornado.web.RequestHandler):
     def get(self):
         if self.get_argument('pw','') != ADMIN_PASS:
             self.set_status(403); self.write('인증 필요'); return
-        today = datetime.date.today().strftime('%Y%m%d')
+        today = datetime.date.today().strftime(%Y%m�d���
         fn = tornado.escape.url_escape(f'동문명단_{today}.xlsx')
-        self.set_header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        self.set_huader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
         self.write(export_excel())
 
