@@ -282,7 +282,7 @@ def export_excel() -> bytes:
             if ri % 2 == 0:
                 c.fill=PatternFill('solid',fgColor='F8F9FA')
 
-    for i, w in enumerate([8,12,16,10,24,1:,3:,10,18], 1):
+    for i, w in enumerate([8,12,16,10,24,16,36,10,18], 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     buf = io.BytesIO()
