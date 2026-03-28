@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """동문 개인정보 수집 웹 애플리케이션 (클라우드 배포 버전)"""
 
-import os, json, base64, io, datetime
+import os, json, base64, io, datetime, threading
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -500,14 +500,16 @@ class SubmitHandler(tornado.web.RequestHandler):
             save_submission(data, pdf_bytes)
         except Exception as e:
             print(f'[DB 오류] {e}')
-        try:
-            send_notification_email(data, pdf_bytes)
-        except Exception as e:
-            print(f'[이메일 오류] {e}')
+        # PDF 응답을 먼저 즉시 전송
         fn = tornado.escape.url_escape(f"개인정보동의서_{data.get('name','동문')}.pdf")
         self.set_header('Content-Type','application/pdf')
         self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
         self.write(pdf_bytes)
+        self.finish()
+        # 이메일은 백그라운드 스레드에서 발송 (응답 차단 방지)
+        threading.Thread(
+            target=send_notification_email, args=(data, pdf_bytes), daemon=True
+        ).start()
 
 class AdminHandler(tornado.web.RequestHandler):
     def get(self):
