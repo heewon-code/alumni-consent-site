@@ -532,7 +532,7 @@ class AdminExportHandler(tornado.web.RequestHandler):
     def get(self):
         if self.get_argument('pw','') != ADMIN_PASS:
             self.set_status(403); self.write('인증 필요'); return
-        today = datetime.date.today().strftime(%Y%m�d���
+        today = datetime.date.today().strftime('%Y%m%d')
         fn = tornado.escape.url_escape(f'동문명단_{today}.xlsx')
         self.set_huader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         self.set_header('Content-Disposition',f"attachment; filename*=UTF-8''{fn}")
